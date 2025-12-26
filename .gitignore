@@ -1,0 +1,39 @@
+# 依賴套件
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Electron 相關
+dist/
+out/
+*.asar
+
+# 系統檔案
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE 設定
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 環境變數
+.env
+.env.local
+
+# 測試覆蓋率
+coverage/
+.nyc_output/
+
+# 暫存檔案
+*.tmp
+*.log
+.cache/
+
+# Assets（如果圖片很大可以加入，但建議保留）
+# assets/characters/*.png
+

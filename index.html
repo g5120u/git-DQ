@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:;">
+    <title>Git-DQ 冒險世界</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft JhengHei', '微軟正黑體', Arial, sans-serif;
+            background: 
+                linear-gradient(135deg, #1e3c72 0%, #2a5298 100%),
+                repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px);
+            background-size: 100% 100%, 100% 4px;
+            color: #fff;
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 50%, rgba(255, 215, 0, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(74, 144, 226, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        #root {
+            width: 100%;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .container {
+            background: 
+                linear-gradient(135deg, rgba(0, 0, 0, 0.9) 0%, rgba(20, 20, 40, 0.9) 100%),
+                repeating-linear-gradient(45deg, rgba(255, 215, 0, 0.03) 0px, rgba(255, 215, 0, 0.03) 1px, transparent 1px, transparent 10px);
+            border: 4px solid #ffd700;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 
+                0 0 30px rgba(255, 215, 0, 0.5),
+                inset 0 0 20px rgba(255, 215, 0, 0.1);
+            min-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 1;
+        }
+
+
+        h1 {
+            text-align: center;
+            color: #ffd700;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .status-box {
+            background: 
+                linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%),
+                repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0px, rgba(255, 255, 255, 0.05) 1px, transparent 1px, transparent 4px);
+            border: 2px solid #4a90e2;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 
+                0 4px 8px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            position: relative;
+        }
+
+        .status-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #4a90e2, transparent);
+            opacity: 0.5;
+        }
+
+        .status-box h2 {
+            color: #4a90e2;
+            margin-bottom: 15px;
+        }
+
+        .status-box pre {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: 'Consolas', 'Courier New', monospace;
+            color: #0f0;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 30px;
+            font-size: 1.2em;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s;
+            font-family: 'Microsoft JhengHei', '微軟正黑體', Arial, sans-serif;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .button-group {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .form-group {
+            margin: 20px 0;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #4a90e2;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1em;
+            font-family: 'Microsoft JhengHei', '微軟正黑體', Arial, sans-serif;
+        }
+
+        .form-group input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 1.5em;
+            color: #ffd700;
+            padding: 50px;
+        }
+
+        .success-message {
+            background: rgba(0, 255, 0, 0.2);
+            border: 2px solid #0f0;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #0f0;
+            text-align: center;
+        }
+
+        .error-message {
+            background: rgba(255, 0, 0, 0.2);
+            border: 2px solid #f00;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #f00;
+            text-align: center;
+        }
+
+        /* 像素圖樣式 */
+        .pixel-art {
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+        }
+
+        .character-sprite {
+            width: 64px;
+            height: 64px;
+            object-fit: contain;
+            filter: drop-shadow(2px 2px 4px rgba(0, 0, 0, 0.5));
+            transition: transform 0.2s;
+        }
+
+        .character-sprite:hover {
+            transform: scale(1.1);
+        }
+
+        /* 傳送門發光動畫 */
+        @keyframes portalGlow {
+            0% {
+                box-shadow: 0 0 40px rgba(173,216,230,0.8), inset 0 0 30px rgba(255,255,255,0.3);
+                opacity: 0.9;
+            }
+            100% {
+                box-shadow: 0 0 60px rgba(173,216,230,1), inset 0 0 50px rgba(255,255,255,0.5);
+                opacity: 1;
+            }
+        }
+
+        /* CRT 掃描線效果 */
+        .pixel-scene::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0,0,0,0.1) 0px,
+                rgba(0,0,0,0.1) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div style="text-align: center; padding: 50px; color: #ffd700;">
+            <h2>正在載入冒險世界...</h2>
+        </div>
+    </div>
+    <script>
+        // 錯誤處理
+        window.addEventListener('error', function(e) {
+            console.error('全域錯誤：', e.error);
+            document.getElementById('root').innerHTML = 
+                '<div style="text-align: center; padding: 50px; color: #f00;">' +
+                '<h2>載入錯誤</h2><p>' + (e.error ? e.error.message : '未知錯誤') + '</p>' +
+                '<p>請檢查開發者工具（F12）查看詳細錯誤訊息</p></div>';
+        });
+        
+        // 檢查 DQ API 是否載入
+        window.addEventListener('load', function() {
+            setTimeout(function() {
+                if (!window.DQ) {
+                    console.error('DQ API 未載入');
+                } else {
+                    console.log('DQ API 已載入');
+                }
+            }, 1000);
+        });
+    </script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script type="text/babel" src="renderer/PixelScene.jsx"></script>
+    <script type="text/babel" src="renderer/PixelBox.jsx"></script>
+    <script type="text/babel" src="renderer/PixelCursor.jsx"></script>
+    <script type="text/babel" src="renderer/PixelSprite.jsx"></script>
+    <script type="text/babel" src="renderer/PixelTypewriter.jsx"></script>
+    <script type="text/babel" src="renderer/App.jsx"></script>
+</body>
+</html>
+

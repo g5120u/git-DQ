@@ -1,0 +1,25 @@
+{
+  "name": "git-dq",
+  "version": "0.1.0",
+  "description": "Git-DQ RPG OS - 將 Git 操作遊戲化的冒險世界",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": [
+    "git",
+    "rpg",
+    "game",
+    "electron",
+    "education"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^28.0.0"
+  },
+  "devDependencies": {}
+}
+
