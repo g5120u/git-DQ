@@ -158,13 +158,34 @@ The Battle Screen and Temple Screen are planned for future releases.
 
 ## 📄 License / 授權
 
-MIT License
+**Dual License / 雙授權模式**
+
+本專案採用雙授權模式（Dual License）：
+
+- **開源授權 / Open Source License**：GNU Affero General Public License v3.0 (AGPL-3.0)
+  - 可下載、執行、修改本專案
+  - 可用於個人、教育、學術及企業內部測試用途
+  - 提供公開網路服務者必須完整公開原始碼
+
+- **商業授權 / Commercial License**
+  - 如欲用於商業 SaaS、付費服務或專有系統
+  - 必須事先向著作權人取得商業授權
+  - 聯絡方式：g5120u@hotmail.com
+
+詳細授權條款請參閱 [LICENSE](LICENSE) 文件。
 
 ## 🤝 Contributing / 貢獻
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please read the following documents before contributing:
 
-歡迎貢獻！請隨時提交 Pull Request。
+歡迎貢獻！請在貢獻前閱讀以下文件：
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - 貢獻規範與 Pull Request 規則
+- **[CLA.md](CLA.md)** - 貢獻者授權同意書
+
+By submitting a Pull Request, you agree to the Contributor License Agreement.
+
+提交 Pull Request 即表示你同意貢獻者授權同意書。
 
 ---
 
