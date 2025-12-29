@@ -52,6 +52,49 @@ function findGitRoot(startPath) {
 }
 
 /**
+ * 向下查找 Git 倉庫（搜尋子目錄）
+ * @param {string} startPath - 起始路徑
+ * @param {number} maxDepth - 最大搜尋深度（預設 3 層）
+ * @returns {string|null} Git 倉庫根目錄，如果找不到則返回 null
+ */
+function findGitRootInSubdirs(startPath, maxDepth = 3) {
+  if (maxDepth <= 0) {
+    return null;
+  }
+  
+  try {
+    const items = fs.readdirSync(startPath, { withFileTypes: true });
+    
+    for (const item of items) {
+      if (item.isDirectory()) {
+        const itemPath = path.join(startPath, item.name);
+        
+        // 跳過 .git 和 node_modules 等目錄
+        if (item.name === ".git" || item.name === "node_modules" || item.name.startsWith(".")) {
+          continue;
+        }
+        
+        // 檢查這個子目錄是否有 .git
+        const gitPath = path.join(itemPath, ".git");
+        if (fs.existsSync(gitPath)) {
+          return itemPath;
+        }
+        
+        // 遞迴搜尋子目錄
+        const found = findGitRootInSubdirs(itemPath, maxDepth - 1);
+        if (found) {
+          return found;
+        }
+      }
+    }
+  } catch (error) {
+    // 忽略讀取錯誤
+  }
+  
+  return null;
+}
+
+/**
  * 掃描目標資料夾的 Git 狀態
  * @returns {Object} 世界狀態資訊
  */
@@ -66,14 +109,20 @@ export function scanWorld() {
     targetCwd = currentCwd;
   }
   
-  // 重要：先檢查當前目錄，如果沒有再向上查找
+  // 重要：先檢查當前目錄，如果沒有再向上查找，最後向下查找子目錄
   // 這樣可以支援 gitDQ 資料夾複製到其他專案的情況
   let actualCwd = targetCwd;
   const currentGitPath = path.join(targetCwd, ".git");
   
   if (!fs.existsSync(currentGitPath)) {
-    // 當前目錄沒有 Git 倉庫，向上查找
-    const gitRoot = findGitRoot(targetCwd);
+    // 當前目錄沒有 Git 倉庫，先向上查找
+    let gitRoot = findGitRoot(targetCwd);
+    
+    // 如果向上找不到，向下查找子目錄
+    if (!gitRoot) {
+      gitRoot = findGitRootInSubdirs(targetCwd, 3);
+    }
+    
     if (gitRoot) {
       actualCwd = gitRoot;
       // 更新目標目錄為找到的 Git 倉庫根目錄
@@ -339,6 +388,189 @@ export function checkoutCommit(commitId) {
     return { success: true, message: `已切換到提交：${id.substring(0, 7)}` };
   } catch (error) {
     return { success: false, message: `切換失敗：${error.message || String(error)}` };
+  }
+}
+
+// ============================================
+// 世界永動核心系統 World Gate System
+// ============================================
+
+/**
+ * 開啟世界（建立或讀取 .world 檔案）
+ * @param {string} folderPath - 資料夾路徑
+ * @returns {Object} 世界資料
+ */
+export function openWorld(folderPath) {
+  if (!folderPath || !fs.existsSync(folderPath)) {
+    return { success: false, message: "資料夾不存在" };
+  }
+
+  const worldFile = path.join(folderPath, ".world");
+
+  // 如果 .world 檔案不存在，建立新世界
+  if (!fs.existsSync(worldFile)) {
+    const newborn = {
+      bornAt: Date.now(),
+      days: 0,
+      creator: null,
+      soul: null,
+      worldName: path.basename(folderPath),
+      lastWake: Date.now(),
+      lastCommitHash: null
+    };
+
+    try {
+      fs.writeFileSync(worldFile, JSON.stringify(newborn, null, 2), "utf8");
+      return { success: true, world: newborn };
+    } catch (error) {
+      return { success: false, message: `建立世界失敗：${error.message}` };
+    }
+  }
+
+  // 讀取現有世界
+  try {
+    const worldData = JSON.parse(fs.readFileSync(worldFile, "utf8"));
+    return { success: true, world: worldData };
+  } catch (error) {
+    return { success: false, message: `讀取世界失敗：${error.message}` };
+  }
+}
+
+/**
+ * 寫入世界靈魂（創世神名字和 email）
+ * @param {string} folderPath - 資料夾路徑
+ * @param {string} name - 創世神名字
+ * @param {string} email - 世界靈魂印記（email）
+ */
+export function writeSoul(folderPath, name, email) {
+  if (!folderPath || !fs.existsSync(folderPath)) {
+    return { success: false, message: "資料夾不存在" };
+  }
+
+  const worldFile = path.join(folderPath, ".world");
+  
+  try {
+    let world = {};
+    if (fs.existsSync(worldFile)) {
+      world = JSON.parse(fs.readFileSync(worldFile, "utf8"));
+    } else {
+      world = {
+        bornAt: Date.now(),
+        days: 0,
+        worldName: path.basename(folderPath),
+        lastWake: Date.now(),
+        lastCommitHash: null
+      };
+    }
+
+    world.creator = name || null;
+    world.soul = email || null;
+    world.lastWake = Date.now();
+
+    fs.writeFileSync(worldFile, JSON.stringify(world, null, 2), "utf8");
+    return { success: true, world };
+  } catch (error) {
+    return { success: false, message: `寫入靈魂失敗：${error.message}` };
+  }
+}
+
+/**
+ * 世界誕生（第一次 commit）
+ * @param {string} folderPath - 資料夾路徑
+ * @param {string} commitHash - Commit hash
+ */
+export function worldBorn(folderPath, commitHash) {
+  if (!folderPath || !fs.existsSync(folderPath)) {
+    return { success: false, message: "資料夾不存在" };
+  }
+
+  const worldFile = path.join(folderPath, ".world");
+  
+  try {
+    let world = {};
+    if (fs.existsSync(worldFile)) {
+      world = JSON.parse(fs.readFileSync(worldFile, "utf8"));
+    } else {
+      world = {
+        bornAt: Date.now(),
+        days: 0,
+        worldName: path.basename(folderPath),
+        lastWake: Date.now(),
+        lastCommitHash: null
+      };
+    }
+
+    // 如果是第一次 commit，世界誕生
+    if (world.days === 0) {
+      world.days = 1;
+    } else {
+      world.days++;
+    }
+    
+    world.lastCommitHash = commitHash || null;
+    world.lastWake = Date.now();
+
+    fs.writeFileSync(worldFile, JSON.stringify(world, null, 2), "utf8");
+    return { success: true, world };
+  } catch (error) {
+    return { success: false, message: `世界誕生失敗：${error.message}` };
+  }
+}
+
+/**
+ * 世界時間流逝（檢查是否需要增加天數）
+ * @param {string} folderPath - 資料夾路徑
+ * @returns {Object} 更新後的世界資料
+ */
+export function tickWorld(folderPath) {
+  if (!folderPath || !fs.existsSync(folderPath)) {
+    return { success: false, message: "資料夾不存在" };
+  }
+
+  const worldFile = path.join(folderPath, ".world");
+  
+  if (!fs.existsSync(worldFile)) {
+    return { success: false, message: "世界檔案不存在" };
+  }
+
+  try {
+    const world = JSON.parse(fs.readFileSync(worldFile, "utf8"));
+    const delta = Date.now() - (world.lastWake || world.bornAt || Date.now());
+
+    // 3 小時沒寫碼，世界老去一天
+    if (delta > 1000 * 60 * 60 * 3) {
+      world.days++;
+      world.lastWake = Date.now();
+      fs.writeFileSync(worldFile, JSON.stringify(world, null, 2), "utf8");
+    }
+
+    return { success: true, world };
+  } catch (error) {
+    return { success: false, message: `世界流逝失敗：${error.message}` };
+  }
+}
+
+/**
+ * 取得世界資料
+ * @param {string} folderPath - 資料夾路徑
+ * @returns {Object} 世界資料
+ */
+export function getWorldData(folderPath) {
+  if (!folderPath || !fs.existsSync(folderPath)) {
+    return { success: false, message: "資料夾不存在" };
+  }
+
+  const worldFile = path.join(folderPath, ".world");
+  
+  if (!fs.existsSync(worldFile)) {
+    return { success: false, message: "世界檔案不存在" };
+  }
+
+  try {
+    const world = JSON.parse(fs.readFileSync(worldFile, "utf8"));
+    return { success: true, world };
+  } catch (error) {
+    return { success: false, message: `讀取世界失敗：${error.message}` };
   }
 }
 

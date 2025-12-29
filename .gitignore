@@ -37,3 +37,6 @@ coverage/
 # Assets（如果圖片很大可以加入，但建議保留）
 # assets/characters/*.png
 
+# 世界狀態檔案（每個專案的世界資料）
+.world
+

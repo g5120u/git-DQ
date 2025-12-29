@@ -1,5 +1,85 @@
 const { useState, useEffect } = React;
 
+// ============================================
+// 世界永動核心系統 World State & Loop
+// ============================================
+
+// 世界狀態核心
+const WorldState = {
+  level: 1,
+  exp: 0,
+  gold: 0,
+  stage: 1,
+  inBattle: true,
+  enemyHP: 10,
+  heroHP: 10,
+  lastCommitHash: null,
+  worldDays: 0,
+  worldName: "",
+  creator: "",
+  soul: "",
+  bornAt: null
+};
+
+// 世界循環函數
+function worldTick() {
+  if (!WorldState.inBattle) return;
+
+  // 自動戰鬥
+  WorldState.enemyHP -= 0.15;
+  WorldState.heroHP -= 0.05;
+
+  // 英雄死亡：重置戰鬥
+  if (WorldState.heroHP <= 0) {
+    WorldState.heroHP = 10 + WorldState.level * 2;
+    WorldState.enemyHP = 10 + WorldState.stage * 2;
+    WorldState.exp = Math.max(0, WorldState.exp - 2);
+  }
+
+  // 勝利：擊敗敵人
+  if (WorldState.enemyHP <= 0) {
+    WorldState.exp += 5;
+    WorldState.gold += 3;
+    WorldState.stage++;
+    WorldState.enemyHP = 10 + WorldState.stage * 2;
+    WorldState.heroHP = Math.min(WorldState.heroHP + 2, 10 + WorldState.level * 2);
+  }
+
+  // 升級
+  if (WorldState.exp >= 20) {
+    WorldState.level++;
+    WorldState.exp = 0;
+    WorldState.heroHP = 10 + WorldState.level * 2;
+  }
+}
+
+// 檢查 commit 狀態
+function checkCommitStatus(currentCommitHash) {
+  if (!currentCommitHash) {
+    WorldState.inBattle = true;
+    return false;
+  }
+
+  if (WorldState.lastCommitHash !== currentCommitHash) {
+    WorldState.lastCommitHash = currentCommitHash;
+    WorldState.worldDays++;
+    WorldState.inBattle = false;
+    
+    WorldState.exp += 10;
+    WorldState.gold += 5;
+    
+    setTimeout(() => {
+      WorldState.inBattle = true;
+      WorldState.enemyHP = 10 + WorldState.stage * 2;
+      WorldState.heroHP = 10 + WorldState.level * 2;
+    }, 3000);
+    
+    return true;
+  }
+
+  return false;
+}
+
 // 提交歷史組件（退回紀錄）
 function CommitHistory({ world, onCheckoutCommit, onRefresh }) {
   const [commitHistory, setCommitHistory] = useState([]);
@@ -158,6 +238,35 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
   const [loading, setLoading] = useState(true);
   const [showNewBranchForm, setShowNewBranchForm] = useState(false);
   const [newBranchName, setNewBranchName] = useState("");
+  const [page, setPage] = useState(0);
+  const pageSize = 3;
+  const [warriorExists, setWarriorExists] = useState(false);
+  const [wizardExists, setWizardExists] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    async function checkAssets() {
+      try {
+        if (window.DQ && typeof window.DQ.fileExists === "function") {
+          const w1 = await window.DQ.fileExists("assets/characters/warrior.png");
+          const w2 = await window.DQ.fileExists("assets/characters/wizard.png");
+          if (!mounted) return;
+          setWarriorExists(Boolean(w1));
+          setWizardExists(Boolean(w2));
+        } else {
+          // 若沒有 DQ.fileExists，嘗試假設檔案不存在（讓 fallback 顯示）
+          setWarriorExists(false);
+          setWizardExists(false);
+        }
+      } catch (e) {
+        if (!mounted) return;
+        setWarriorExists(false);
+        setWizardExists(false);
+      }
+    }
+    checkAssets();
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     loadBranchInfo();
@@ -233,35 +342,34 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
   if (!world || !world.exists) {
     return null;
   }
-
-  // 確保當前分支在最前面
+  // 分頁：將所有分支排列並分頁顯示
   const allBranches = branchInfo?.branches || [];
   const currentBranchIndex = allBranches.findIndex(b => b.isCurrent);
-  
-  // 重新排列，當前分支在前
   let sortedBranches = [...allBranches];
   if (currentBranchIndex > 0) {
     const currentBranch = sortedBranches.splice(currentBranchIndex, 1)[0];
     sortedBranches.unshift(currentBranch);
   }
-  
-  // 取前3個分支作為存檔槽位
-  const slots = [
-    sortedBranches[0] || null,
-    sortedBranches[1] || null,
-    sortedBranches[2] || null
-  ];
 
-  // 如果沒有分支，至少顯示當前分支
-  if (slots[0] === null && branchInfo?.currentBranch) {
-    slots[0] = {
+  // 當沒有任何 branches，使用當前 branch 作為 fallback
+  if (sortedBranches.length === 0 && branchInfo?.currentBranch) {
+    sortedBranches = [{
       name: branchInfo.currentBranch,
       isCurrent: true,
       commitCount: world.commitCount || 0,
       lastCommit: world.lastCommit || "無提交記錄",
       commitShort: world.lastCommitShort || ""
-    };
+    }];
   }
+
+  const pageCount = Math.max(1, Math.ceil(sortedBranches.length / pageSize));
+  // clamp page
+  const safePage = Math.min(Math.max(0, page), pageCount - 1);
+  if (safePage !== page) setPage(safePage);
+  const pageStart = safePage * pageSize;
+  const pageItems = sortedBranches.slice(pageStart, pageStart + pageSize);
+  // ensure length = pageSize with null placeholders
+  const slots = Array.from({ length: pageSize }, (_, i) => pageItems[i] || null);
 
   return (
     <PixelScene bg="village">
@@ -272,13 +380,27 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
             speed={30}
           />
         </div>
+        {/* 分頁控制（右上） */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+          <div></div>
+          {pageCount > 1 && (
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={safePage === 0} style={{ padding: "6px 8px", cursor: safePage === 0 ? "not-allowed" : "pointer" }}>◀</button>
+              <div style={{ color: "#FFD700", fontFamily: "'Courier New', monospace" }}>{safePage + 1} / {pageCount}</div>
+              <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={safePage === pageCount - 1} style={{ padding: "6px 8px", cursor: safePage === pageCount - 1 ? "not-allowed" : "pointer" }}>▶</button>
+            </div>
+          )}
+        </div>
 
-      <div style={{ display: "flex", gap: "15px", justifyContent: "center", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: "15px", justifyContent: "space-between", flexWrap: "nowrap", alignItems: "stretch" }}>
         {slots.map((slot, index) => (
           <div
             key={index}
             onClick={() => slot && handleSelectSlot(slot)}
             style={{
+              flex: "0 0 calc((100% - 30px) / 3)", // 三欄平均分配，考慮 gap
+              maxWidth: "33%",
+              minWidth: "180px",
               background: slot ? (slot.isCurrent 
                 ? "linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 200, 0, 0.2) 100%)" 
                 : "linear-gradient(135deg, rgba(139, 69, 19, 0.6) 0%, rgba(101, 50, 14, 0.5) 100%)") 
@@ -286,7 +408,6 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
               border: slot && slot.isCurrent ? "3px solid #FFD700" : "2px solid #8B4513",
               borderRadius: "10px",
               padding: "20px",
-              minWidth: "200px",
               cursor: slot && !slot.isCurrent ? "pointer" : "default",
               transition: "all 0.3s",
               opacity: slot ? 1 : 0.5,
@@ -324,51 +445,55 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
                 }}>
                   {slot.name === "main" || slot.name === "master" ? (
                     <>
-                      <img 
-                        src="assets/characters/warrior.png" 
-                        alt="戰士"
-                        className="character-sprite pixel-art"
-                        onError={(e) => {
-                          // 如果圖片載入失敗，隱藏圖片並顯示 emoji
-                          e.target.style.display = "none";
-                          const fallback = e.target.parentElement.querySelector(".emoji-fallback");
-                          if (fallback) fallback.style.display = "inline-block";
-                        }}
-                      />
-                      <span 
-                        className="emoji-fallback"
-                        style={{ 
-                          display: "none",
-                          fontSize: "3em",
-                          filter: "drop-shadow(2px 2px 4px rgba(0,0,0,0.5))"
-                        }}
-                      >
-                        ⚔️
-                      </span>
+                      {warriorExists ? (
+                        <img 
+                          src="assets/characters/warrior.png" 
+                          alt="戰士"
+                          className="character-sprite pixel-art"
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                            const fallback = e.target.parentElement.querySelector(".emoji-fallback");
+                            if (fallback) fallback.style.display = "inline-block";
+                          }}
+                        />
+                      ) : (
+                        <span 
+                          className="emoji-fallback"
+                          style={{ 
+                            display: "inline-block",
+                            fontSize: "3em",
+                            filter: "drop-shadow(2px 2px 4px rgba(0,0,0,0.5))"
+                          }}
+                        >
+                          ⚔️
+                        </span>
+                      )}
                     </>
                   ) : (
                     <>
-                      <img 
-                        src="assets/characters/wizard.png" 
-                        alt="魔法師"
-                        className="character-sprite pixel-art"
-                        onError={(e) => {
-                          // 如果圖片載入失敗，隱藏圖片並顯示 emoji
-                          e.target.style.display = "none";
-                          const fallback = e.target.parentElement.querySelector(".emoji-fallback");
-                          if (fallback) fallback.style.display = "inline-block";
-                        }}
-                      />
-                      <span 
-                        className="emoji-fallback"
-                        style={{ 
-                          display: "none",
-                          fontSize: "3em",
-                          filter: "drop-shadow(2px 2px 4px rgba(0,0,0,0.5))"
-                        }}
-                      >
-                        🧙
-                      </span>
+                      {wizardExists ? (
+                        <img 
+                          src="assets/characters/wizard.png" 
+                          alt="魔法師"
+                          className="character-sprite pixel-art"
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                            const fallback = e.target.parentElement.querySelector(".emoji-fallback");
+                            if (fallback) fallback.style.display = "inline-block";
+                          }}
+                        />
+                      ) : (
+                        <span 
+                          className="emoji-fallback"
+                          style={{ 
+                            display: "inline-block",
+                            fontSize: "3em",
+                            filter: "drop-shadow(2px 2px 4px rgba(0,0,0,0.5))"
+                          }}
+                        >
+                          🧙
+                        </span>
+                      )}
                     </>
                   )}
                 </div>
@@ -477,6 +602,134 @@ function App() {
   const [email, setEmail] = useState("");
   const [targetPath, setTargetPath] = useState("");
   const [showFolderSelector, setShowFolderSelector] = useState(false);
+  const [worldState, setWorldState] = useState({ ...WorldState });
+  const [showBattleScreen, setShowBattleScreen] = useState(false);
+  const [showEncounterOptions, setShowEncounterOptions] = useState(null); // { repoRoot, lastCommitId }
+  const [showVillageSim, setShowVillageSim] = useState(false);
+  const [simRunning, setSimRunning] = useState(false);
+  const [actionLog, setActionLog] = useState([]);
+  const simIntervalRef = React.useRef(null);
+  const [showInitConfirm, setShowInitConfirm] = useState(false);
+  const [villageAutoRunning, setVillageAutoRunning] = useState(false);
+  const [villageLog, setVillageLog] = useState([]);
+
+  // 世界永動循環（只在有 commit 時啟動）
+  useEffect(() => {
+    // 使用 ref 儲存 interval，避免在 effect 內部互相遮蔽
+    const startWorldLoopIfNeeded = () => {
+      // 已存在則不重複啟動
+      if (window._worldLoopRef && window._worldLoopRef.interval) return;
+
+      if (world && world.exists && world.lastCommitId && worldState.inBattle) {
+        // 啟動循環
+        window._worldLoopRef = window._worldLoopRef || {};
+        window._worldLoopRef.interval = setInterval(() => {
+          try {
+            worldTick();
+            // 更新 React state 以觸發重新渲染
+            setWorldState({ ...WorldState });
+          } catch (e) {
+            console.error("worldTick error:", e);
+          }
+        }, 100);
+      }
+    };
+
+    const stopWorldLoop = () => {
+      if (window._worldLoopRef && window._worldLoopRef.interval) {
+        clearInterval(window._worldLoopRef.interval);
+        window._worldLoopRef.interval = null;
+      }
+    };
+
+    // 啟動或停止循環依據目前條件
+    if (world && world.exists && world.lastCommitId && worldState.inBattle) {
+      startWorldLoopIfNeeded();
+    } else {
+      stopWorldLoop();
+      // 如果沒有 commit，不啟動戰鬥（同步 global）
+      if (world && world.exists && !world.lastCommitId) {
+        WorldState.inBattle = false;
+        setWorldState({ ...WorldState });
+      }
+    }
+
+    // 清理
+    return () => {
+      stopWorldLoop();
+    };
+  }, [world, world?.lastCommitId, worldState.inBattle]);
+
+  // 檢查 commit 狀態 - 有讀到 commit 就啟動戰鬥
+  useEffect(() => {
+    if (world && world.exists && world.lastCommitId) {
+      // 如果有 commit，立即啟動戰鬥（無論是否為新的 commit）
+      // 初始化世界天數（如果還沒有）
+      if (!WorldState.worldDays || WorldState.worldDays === 0) {
+        WorldState.worldDays = 1;
+      }
+      
+      // 立即啟動戰鬥
+      WorldState.lastCommitHash = world.lastCommitId;
+      WorldState.inBattle = true;
+      WorldState.heroHP = WorldState.heroHP || (10 + WorldState.level * 2);
+      WorldState.enemyHP = WorldState.enemyHP || (10 + WorldState.stage * 2);
+      
+      // 強制更新狀態 - 確保所有屬性都正確設置
+      const newState = {
+        ...WorldState,
+        inBattle: true,
+        worldDays: WorldState.worldDays || 1,
+        heroHP: WorldState.heroHP || (10 + WorldState.level * 2),
+        enemyHP: WorldState.enemyHP || (10 + WorldState.stage * 2),
+        lastCommitHash: world.lastCommitId
+      };
+      setWorldState(newState);
+      
+      // 顯示戰鬥通知
+      setMessage({ 
+        type: "success", 
+        text: `✅ 已讀取 commit 紀錄。\n\n⚔️ 勇者遭遇怪物，開始戰鬥！\n🌍 世界第 ${WorldState.worldDays || 1} 天` 
+      });
+      
+      // 通知世界誕生
+      if (window.DQ && window.DQ.worldBorn) {
+        window.DQ.worldBorn(targetPath, world.lastCommitId);
+      }
+      
+      // 確保戰鬥循環啟動和動態模式按鈕可見 - 多次更新確保 UI 刷新
+      setTimeout(() => {
+        setWorldState(prev => ({ 
+          ...prev, 
+          ...WorldState,
+          inBattle: true,
+          worldDays: WorldState.worldDays || 1
+        }));
+      }, 100);
+      
+      setTimeout(() => {
+        setWorldState(prev => ({ 
+          ...prev, 
+          inBattle: true
+        }));
+      }, 300);
+      
+      // 再次強制更新，確保 UI 刷新
+      setTimeout(() => {
+        setWorldState(prev => ({ 
+          ...prev, 
+          inBattle: true,
+          worldDays: WorldState.worldDays || 1,
+          heroHP: WorldState.heroHP || (10 + WorldState.level * 2),
+          enemyHP: WorldState.enemyHP || (10 + WorldState.stage * 2)
+        }));
+      }, 500);
+    } else if (world && world.exists && !world.lastCommitId) {
+      // 沒有 commit，不啟動戰鬥
+      WorldState.inBattle = false;
+      setWorldState({ ...WorldState, inBattle: false });
+    }
+  }, [world?.lastCommitId, world?.exists, targetPath]);
 
   useEffect(() => {
     async function init() {
@@ -491,6 +744,25 @@ function App() {
 
         const path = await window.DQ.getTarget();
         setTargetPath(path || "未設定");
+
+        // 開啟世界（建立或讀取 .world 檔案）
+        if (window.DQ.openWorld) {
+          const worldResult = await window.DQ.openWorld(path);
+          if (worldResult.success && worldResult.world) {
+            WorldState.worldDays = worldResult.world.days || 0;
+            WorldState.worldName = worldResult.world.worldName || "";
+            WorldState.creator = worldResult.world.creator || "";
+            WorldState.soul = worldResult.world.soul || "";
+            WorldState.bornAt = worldResult.world.bornAt || null;
+            WorldState.lastCommitHash = worldResult.world.lastCommitHash || null;
+            setWorldState({ ...WorldState });
+          }
+        }
+
+        // 世界時間流逝
+        if (window.DQ.tickWorld) {
+          await window.DQ.tickWorld(path);
+        }
       } catch (error) {
         console.error("無法取得目標路徑：", error);
         setMessage({ type: "error", text: "無法取得目標路徑：" + (error.message || String(error)) });
@@ -501,9 +773,34 @@ function App() {
 
     // 監聽目標資料夾變更事件
     if (window.DQ && window.DQ.onTargetChanged) {
-      window.DQ.onTargetChanged((newPath) => {
+      window.DQ.onTargetChanged(async (newPath) => {
         setTargetPath(newPath);
         setWorld(null); // 重置狀態
+        
+        // 重置世界狀態
+        WorldState.level = 1;
+        WorldState.exp = 0;
+        WorldState.gold = 0;
+        WorldState.stage = 1;
+        WorldState.inBattle = true;
+        WorldState.enemyHP = 10;
+        WorldState.heroHP = 10;
+        WorldState.lastCommitHash = null;
+        
+        // 開啟新世界
+        if (window.DQ.openWorld) {
+          const worldResult = await window.DQ.openWorld(newPath);
+          if (worldResult.success && worldResult.world) {
+            WorldState.worldDays = worldResult.world.days || 0;
+            WorldState.worldName = worldResult.world.worldName || "";
+            WorldState.creator = worldResult.world.creator || "";
+            WorldState.soul = worldResult.world.soul || "";
+            WorldState.bornAt = worldResult.world.bornAt || null;
+            WorldState.lastCommitHash = worldResult.world.lastCommitHash || null;
+            setWorldState({ ...WorldState });
+          }
+        }
+        
         refresh();
       });
     }
@@ -519,6 +816,64 @@ function App() {
       const worldData = await window.DQ.scanWorld();
       if (worldData) {
         setWorld(worldData);
+        
+        // 如果有 commit，立即啟動戰鬥
+        if (worldData.exists && worldData.lastCommitId) {
+          // 初始化世界天數（如果還沒有）
+          if (!WorldState.worldDays || WorldState.worldDays === 0) {
+            WorldState.worldDays = 1;
+          }
+          
+          // 立即啟動戰鬥（無論是否為新的 commit）
+          WorldState.inBattle = true;
+          WorldState.lastCommitHash = worldData.lastCommitId;
+          WorldState.heroHP = WorldState.heroHP || (10 + WorldState.level * 2);
+          WorldState.enemyHP = WorldState.enemyHP || (10 + WorldState.stage * 2);
+          
+          // 強制更新狀態 - 確保所有屬性都正確設置
+          const newState = {
+            ...WorldState,
+            inBattle: true,
+            worldDays: WorldState.worldDays || 1,
+            heroHP: WorldState.heroHP || (10 + WorldState.level * 2),
+            enemyHP: WorldState.enemyHP || (10 + WorldState.stage * 2),
+            lastCommitHash: worldData.lastCommitId
+          };
+          setWorldState(newState);
+          
+          // 顯示戰鬥通知（包含世界天數）
+          setMessage({ 
+            type: "success", 
+            text: `✅ 已讀取 commit 紀錄。\n\n⚔️ 勇者遭遇怪物，開始戰鬥！\n🌍 世界第 ${WorldState.worldDays || 1} 天` 
+          });
+          
+          // 通知世界誕生
+          if (window.DQ && window.DQ.worldBorn) {
+            const path = await window.DQ.getTarget();
+            window.DQ.worldBorn(worldData.repoRoot || path, worldData.lastCommitId);
+          }
+          
+          // 確保戰鬥循環啟動和動態模式按鈕可見 - 多次更新確保 UI 刷新
+          setTimeout(() => {
+            setWorldState(prev => ({ 
+              ...prev, 
+              ...WorldState,
+              inBattle: true,
+              worldDays: WorldState.worldDays || 1
+            }));
+          }, 100);
+          
+          setTimeout(() => {
+            setWorldState(prev => ({ 
+              ...prev, 
+              inBattle: true
+            }));
+          }, 300);
+        } else if (worldData.exists && !worldData.lastCommitId) {
+          // 沒有 commit，不啟動戰鬥
+          WorldState.inBattle = false;
+          setWorldState({ ...WorldState });
+        }
       } else {
         throw new Error("掃描結果為空");
       }
@@ -532,22 +887,23 @@ function App() {
   }
 
   async function handleInitWorld() {
-    // 顯示確認對話框
-    const confirmed = confirm(
-      "確定要建立新的村莊（Git 倉庫）嗎？\n\n" +
-      "這將會在當前資料夾執行 git init，建立一個新的 Git 倉庫。\n\n" +
-      "點擊「確定」建立，點擊「取消」取消操作。"
-    );
-    
-    if (!confirmed) {
-      return;
-    }
-    
+    // 顯示自訂確認對話
+    setShowInitConfirm(true);
+  }
+
+  async function doInitWorldConfirmed() {
+    setShowInitConfirm(false);
     setLoading(true);
     setMessage(null);
     try {
       const result = await window.DQ.initWorld();
       if (result.success) {
+        // 世界誕生：開啟世界檔案
+        if (window.DQ && window.DQ.openWorld) {
+          const path = await window.DQ.getTarget();
+          await window.DQ.openWorld(path);
+        }
+        
         setMessage({ type: "success", text: result.message });
         // 等待一下讓用戶看到成功訊息
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -571,6 +927,18 @@ function App() {
     setMessage(null);
     try {
       const result = await window.DQ.setHero(name.trim(), email.trim());
+      
+      // 寫入世界靈魂（創世神名字和 email）
+      if (window.DQ && window.DQ.writeSoul) {
+        const path = await window.DQ.getTarget();
+        const soulResult = await window.DQ.writeSoul(path, name.trim(), email.trim());
+        if (soulResult.success && soulResult.world) {
+          WorldState.creator = soulResult.world.creator || "";
+          WorldState.soul = soulResult.world.soul || "";
+          setWorldState({ ...WorldState });
+        }
+      }
+      
       setMessage({ type: "success", text: result.message });
       setShowForm(false);
       setName("");
@@ -590,27 +958,349 @@ function App() {
       const result = await window.DQ.selectFolder();
       if (result && result.success) {
         setTargetPath(result.path);
-        setMessage({ type: "success", text: `已切換到：${result.path}` });
+        
         // 重要：完全重置狀態，清除所有舊資料
-        // 確保不會顯示上一個人的 Git 資料
         setWorld(null);
         setName("");
         setEmail("");
         setShowForm(false);
+        setShowBattleScreen(false);
+        
         // 等待一小段時間確保狀態清除
         await new Promise(resolve => setTimeout(resolve, 100));
-        // 強制重新載入，確保不會顯示上一個人的 Git 資料
-        await refresh();
+
+        // 明確設定目標路徑給主進程（加強保險）
+        if (window.DQ && typeof window.DQ.setTarget === "function") {
+          await window.DQ.setTarget(result.path);
+          // 等待主進程更新 targetCwd
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
+        // 強制重新載入
+        const worldData = await window.DQ.scanWorld();
+        
+        // 如果第一層沒有找到倉庫，自動搜尋其他層
+        if (!worldData || !worldData.exists) {
+          setMessage({ 
+            type: "info", 
+            text: "🔍 當前資料夾沒有 Git 倉庫，正在自動搜尋其他異世界（子目錄）..." 
+          });
+          
+          // 等待一下讓用戶看到訊息
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // 重新掃描（scanWorld 會自動向上查找）
+          const retryData = await window.DQ.scanWorld();
+          if (retryData && retryData.exists) {
+            setWorld(retryData);
+            
+            // 如果有 commit，立即啟動戰鬥
+            if (retryData.lastCommitId) {
+              // 初始化世界天數（如果還沒有）
+              if (!WorldState.worldDays || WorldState.worldDays === 0) {
+                WorldState.worldDays = 1;
+              }
+              
+              // 立即啟動戰鬥
+              WorldState.inBattle = true;
+              WorldState.lastCommitHash = retryData.lastCommitId;
+              WorldState.heroHP = WorldState.heroHP || (10 + WorldState.level * 2);
+              WorldState.enemyHP = WorldState.enemyHP || (10 + WorldState.stage * 2);
+              
+              // 強制更新狀態 - 確保所有屬性都正確設置
+              const newState = {
+                ...WorldState,
+                inBattle: true,
+                worldDays: WorldState.worldDays || 1,
+                heroHP: WorldState.heroHP || (10 + WorldState.level * 2),
+                enemyHP: WorldState.enemyHP || (10 + WorldState.stage * 2),
+                lastCommitHash: retryData.lastCommitId
+              };
+              setWorldState(newState);
+              
+              // 顯示戰鬥通知，並彈出選擇（村莊或出征）
+              setMessage({ 
+                type: "success", 
+                text: `✅ 找到 Git 倉庫！已讀取 commit 紀錄。🌍 世界第 ${WorldState.worldDays} 天` 
+              });
+              setShowEncounterOptions({
+                repoRoot: retryData.repoRoot || result.path,
+                lastCommitId: retryData.lastCommitId
+              });
+              
+              // 通知世界誕生
+              if (window.DQ && window.DQ.worldBorn) {
+                window.DQ.worldBorn(retryData.repoRoot || result.path, retryData.lastCommitId);
+              }
+              
+              // 確保動態模式按鈕可見和狀態更新 - 多次更新確保 UI 刷新
+              setTimeout(() => {
+                setWorldState(prev => ({ 
+                  ...prev, 
+                  ...WorldState,
+                  inBattle: true,
+                  worldDays: WorldState.worldDays || 1
+                }));
+              }, 100);
+              
+              setTimeout(() => {
+                setWorldState(prev => ({ 
+                  ...prev, 
+                  inBattle: true
+                }));
+              }, 300);
+              
+              // (已改為手動點擊「動態模式」開戰) - 不自動開啟戰鬥畫面
+            } else {
+              setMessage({ 
+                type: "info", 
+                text: "✅ 找到 Git 倉庫，但還沒有任何 commit 紀錄。" 
+              });
+              WorldState.inBattle = false;
+              setWorldState({ ...WorldState });
+            }
+          } else {
+            // 沒有找到倉庫，確保顯示初始畫面
+            setWorld({ exists: false });
+            setMessage({ 
+              type: "info", 
+              text: "未找到 Git 倉庫。請選擇包含 Git 倉庫的資料夾，或建立新的村莊（git init）。" 
+            });
+          }
+        } else {
+          setWorld(worldData);
+          
+          // 如果有 commit，立即啟動戰鬥並顯示通知
+          if (worldData.lastCommitId) {
+            // 初始化世界天數（如果還沒有）
+            if (!WorldState.worldDays || WorldState.worldDays === 0) {
+              WorldState.worldDays = 1;
+            }
+            
+            // 立即啟動戰鬥
+            WorldState.inBattle = true;
+            WorldState.lastCommitHash = worldData.lastCommitId;
+            WorldState.heroHP = WorldState.heroHP || (10 + WorldState.level * 2);
+            WorldState.enemyHP = WorldState.enemyHP || (10 + WorldState.stage * 2);
+            
+            // 強制更新狀態 - 確保所有屬性都正確設置
+            const newState = {
+              ...WorldState,
+              inBattle: true,
+              worldDays: WorldState.worldDays || 1,
+              heroHP: WorldState.heroHP || (10 + WorldState.level * 2),
+              enemyHP: WorldState.enemyHP || (10 + WorldState.stage * 2),
+              lastCommitHash: worldData.lastCommitId
+            };
+            setWorldState(newState);
+            
+            // 顯示戰鬥通知（包含世界天數），並顯示選項
+            setMessage({ 
+              type: "success", 
+              text: `✅ 已讀取 commit 紀錄。🌍 世界第 ${WorldState.worldDays} 天` 
+            });
+            setShowEncounterOptions({
+              repoRoot: worldData.repoRoot || result.path,
+              lastCommitId: worldData.lastCommitId
+            });
+            
+            // 通知世界誕生
+            if (window.DQ && window.DQ.worldBorn) {
+              window.DQ.worldBorn(worldData.repoRoot || result.path, worldData.lastCommitId);
+            }
+            
+            // 確保動態模式按鈕可見和狀態更新 - 多次更新確保 UI 刷新
+            setTimeout(() => {
+              setWorldState(prev => ({ 
+                ...prev, 
+                ...WorldState,
+                inBattle: true,
+                worldDays: WorldState.worldDays || 1
+              }));
+            }, 100);
+            
+            setTimeout(() => {
+              setWorldState(prev => ({ 
+                ...prev, 
+                inBattle: true
+              }));
+            }, 300);
+            
+            // (已改為手動點擊「動態模式」開戰) - 不自動開啟戰鬥畫面
+          } else {
+            // 沒有 commit，不啟動戰鬥
+            WorldState.inBattle = false;
+            setWorldState({ ...WorldState });
+          }
+        }
       } else {
+        // 用戶取消選擇，確保顯示初始畫面
+        if (!world || !world.exists) {
+          setWorld({ exists: false });
+        }
+        // 顯示訊息並在 3 秒後自動消失
         setMessage({ type: "error", text: "未選擇資料夾" });
-        setLoading(false);
+        setTimeout(() => {
+          setMessage(null);
+        }, 3000);
       }
     } catch (error) {
       console.error("選擇資料夾錯誤：", error);
+      // 確保即使出錯也顯示初始畫面
+      if (!world || !world.exists) {
+        setWorld({ exists: false });
+      }
       setMessage({ type: "error", text: "無法選擇資料夾：" + (error.message || String(error)) });
+      setTimeout(() => {
+        setMessage(null);
+      }, 3000);
+    } finally {
       setLoading(false);
     }
   }
+
+  // Debug: 手動觸發找到 commit 並啟動戰鬥（測試用）
+  async function triggerDebugBattle() {
+    try {
+      setMessage(null);
+      const path = (window.DQ && window.DQ.getTarget) ? await window.DQ.getTarget() : targetPath;
+      const fake = {
+        exists: true,
+        userName: world && world.userName ? world.userName : "DebugHero",
+        userEmail: world && world.userEmail ? world.userEmail : "debug@example.com",
+        branch: world && world.branch ? world.branch : "main",
+        commitCount: world && world.commitCount ? world.commitCount : 1,
+        lastCommit: "debug: 強制觸發戰鬥",
+        lastCommitId: "debug0000000000000000000000000000000000",
+        repoRoot: path,
+        untrackedFiles: [],
+        modifiedFiles: [],
+        deletedFiles: []
+      };
+
+      // 設定 world 與 global WorldState，並更新 React state
+      setWorld(fake);
+      if (!WorldState.worldDays || WorldState.worldDays === 0) WorldState.worldDays = 1;
+      WorldState.inBattle = true;
+      WorldState.lastCommitHash = fake.lastCommitId;
+      WorldState.heroHP = WorldState.heroHP || (10 + WorldState.level * 2);
+      WorldState.enemyHP = WorldState.enemyHP || (10 + WorldState.stage * 2);
+      setWorldState({ ...WorldState });
+
+      setMessage({ type: "success", text: `🔧 Debug：已模擬找到 commit，將啟動戰鬥。\n🌍 世界第 ${WorldState.worldDays} 天` });
+
+      // 確保世界循環與 UI 更新
+      setTimeout(() => {
+        setWorldState(prev => ({ ...prev, inBattle: true, worldDays: WorldState.worldDays || 1 }));
+      }, 150);
+      // 只顯示通知，保留手動開啟戰鬥（Debug 不自動開啟）
+    } catch (error) {
+      console.error("triggerDebugBattle error:", error);
+      setMessage({ type: "error", text: "Debug 觸發失敗：" + (error.message || String(error)) });
+    }
+  }
+
+  // 使用者手動開啟戰鬥畫面（有檢查）
+  function handleOpenBattleScreen() {
+    if (!world || !world.exists) {
+      setMessage({ type: "error", text: "尚未選擇有效的冒險世界（沒有倉庫）" });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    if (!world.userName) {
+      setMessage({ type: "error", text: "請先設定冒險者身分（右側設定）" });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    if (!world.lastCommitId) {
+      setMessage({ type: "info", text: "此倉庫尚無 commit，無法進入動態戰鬥模式" });
+      setTimeout(() => setMessage(null), 3000);
+      return;
+    }
+    // 條件都滿足，顯示戰鬥畫面
+    setShowBattleScreen(true);
+  }
+
+  // 處理使用者在找到 commit 時的選擇（村莊日常或出征）
+  function handleEncounterChoice(choice) {
+    setShowEncounterOptions(null);
+    if (choice === "village") {
+      // 顯示村莊模擬器
+      setShowVillageSim(true);
+    } else if (choice === "expedition") {
+      // 直接進入戰鬥（手動）
+      handleOpenBattleScreen();
+    }
+  }
+
+  // 村莊模擬器自動循環 effect
+  useEffect(() => {
+    if (simRunning && showVillageSim) {
+      // 每 3 秒做一個隨機事件
+      simIntervalRef.current = setInterval(() => {
+        const actions = [
+          { text: "打雜工作，獲得 5 金幣", fn: () => { WorldState.gold += 5; WorldState.exp += 2; } },
+          { text: "幫忙村民，獲得 3 金幣", fn: () => { WorldState.gold += 3; WorldState.exp += 1; } },
+          { text: "購買補給，花費 4 金幣", fn: () => { WorldState.gold = Math.max(0, WorldState.gold - 4); } },
+          { text: "接完成小任務，獲得 8 金幣", fn: () => { WorldState.gold += 8; WorldState.exp += 3; } }
+        ];
+        const act = actions[Math.floor(Math.random() * actions.length)];
+        act.fn();
+        const time = new Date().toLocaleTimeString();
+        setActionLog(prev => [...prev, `${time} - ${act.text}`].slice(-200));
+        setWorldState({ ...WorldState });
+      }, 3000);
+    } else {
+      if (simIntervalRef.current) {
+        clearInterval(simIntervalRef.current);
+        simIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (simIntervalRef.current) {
+        clearInterval(simIntervalRef.current);
+        simIntervalRef.current = null;
+      }
+    };
+  }, [simRunning, showVillageSim]);
+
+  // 初始化確認對話的 UI（git init 白話說明）
+  // 放在 App return 的最上層區塊附近
+
+  // worldState 更新回調，傳給 BattleScreen 使用
+  function handleWorldStateUpdate(patch) {
+    Object.assign(WorldState, patch);
+    setWorldState({ ...WorldState });
+  }
+
+  // 村莊模擬器：自動循環處理
+  useEffect(() => {
+    let interval = null;
+    if (showVillageSim && villageAutoRunning) {
+      interval = setInterval(() => {
+        // 隨機選一個行動
+        const acts = ["work", "buy", "rest"];
+        const act = acts[Math.floor(Math.random() * acts.length)];
+        let entry = "";
+        if (act === "work") {
+          WorldState.gold = (WorldState.gold || 0) + 5;
+          entry = `打雜工作 +5 金幣（總 ${WorldState.gold}）`;
+        } else if (act === "buy") {
+          WorldState.gold = Math.max(0, (WorldState.gold || 0) - 3);
+          entry = `購買補給 -3 金幣（總 ${WorldState.gold}）`;
+        } else {
+          WorldState.exp = (WorldState.exp || 0) + 2;
+          entry = `休息恢復，獲得 EXP +2（總 ${WorldState.exp}）`;
+        }
+        setWorldState({ ...WorldState });
+        setVillageLog(l => [`${new Date().toLocaleTimeString()} - ${entry}`, ...l].slice(0, 50));
+      }, 2500); // 每 2.5s 一次
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [showVillageSim, villageAutoRunning]);
 
   if (loading && !world) {
     return (
@@ -701,46 +1391,124 @@ function App() {
               >
                 🌍 其他世界
               </button>
+              {/* Debug 測試按鈕（顯示為小型紅色按鈕） */}
+              <button
+                onClick={triggerDebugBattle}
+                style={{
+                  padding: "6px 8px",
+                  fontSize: "0.75em",
+                  margin: "0",
+                  background: "#8b0000",
+                  border: "2px solid #ff6347",
+                  color: "#fff",
+                  fontFamily: "'Courier New', monospace",
+                  borderRadius: "3px",
+                  cursor: "pointer"
+                }}
+                title="Debug：手動模擬找到 commit 並啟動戰鬥"
+              >
+                Debug 戰鬥
+              </button>
             </div>
           </div>
         </PixelBox>
+        
+        {/* 世界狀態顯示 - 有 commit 時顯示完整數據 */}
+        {world && world.exists && world.lastCommitId && worldState.inBattle && (
+          <PixelBox type="info" style={{ marginTop: "10px", padding: "10px 15px" }}>
+            <div style={{ 
+              display: "flex", 
+              justifyContent: "space-around", 
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "15px",
+              fontFamily: "'Courier New', monospace",
+              fontSize: "0.85em"
+            }}>
+              <div style={{ color: "#ffd700" }}>
+                ⚔️ LV {worldState.level} | EXP {worldState.exp}/20
+              </div>
+              <div style={{ color: "#ffd700" }}>
+                💰 {worldState.gold} 金幣
+              </div>
+              <div style={{ color: "#ffd700" }}>
+                📖 第 {worldState.stage} 關
+              </div>
+              <div style={{ color: worldState.inBattle ? "#90ee90" : "#ff6347" }}>
+                {worldState.inBattle ? "⚔️ 戰鬥中" : "✨ 新章節"}
+              </div>
+              <div style={{ color: "#9370DB" }}>
+                ❤️ {Math.max(0, Math.ceil(worldState.heroHP))}/{10 + worldState.level * 2} HP
+              </div>
+              <div style={{ color: "#ff6347" }}>
+                👹 {Math.max(0, Math.ceil(worldState.enemyHP))} HP
+              </div>
+              {/* 顯示世界天數 */}
+              <div style={{ color: "#87ceeb" }}>
+                🌍 世界第 {worldState.worldDays || 1} 天
+              </div>
+            </div>
+          </PixelBox>
+        )}
       </div>
 
-      {message && (
+      {/* 訊息框 - 放在右上角，稍微下移避免擋到按鈕或標題列
+          若為「未找到 Git 倉庫」訊息，改在中間冒險之書的右側下方顯示（較自然） */}
+      {message && !message.text?.includes("未找到 Git 倉庫") && !showBattleScreen && (
         <div style={{
           position: "absolute",
-          top: "80px",
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 200,
-          width: "90%",
-          maxWidth: "600px"
+          top: "140px",
+          right: "10px",
+          zIndex: 1300,
+          width: "auto",
+          maxWidth: "420px",
+          minWidth: "220px"
         }}>
-          <PixelBox type={message.type === "success" ? "info" : "warning"}>
-            {message.text}
+          <PixelBox type={message.type === "success" ? "info" : message.type === "error" ? "warning" : "info"}>
+            <div style={{ 
+              whiteSpace: "pre-line",
+              fontFamily: "'Courier New', monospace",
+              fontSize: "0.8em",
+              lineHeight: "1.4"
+            }}>
+              {message.text}
+            </div>
+          </PixelBox>
+        </div>
+      )}
+
+      {/* 建立新村莊確認對話（說明 git init） */}
+      {showInitConfirm && (
+        <div style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          zIndex: 2500,
+          width: "640px",
+          maxWidth: "90%"
+        }}>
+          <PixelBox type="dialog" title="建立新村莊（Git 倉庫） - 確認">
+            <div style={{ padding: "10px", fontFamily: "'Courier New', monospace", fontSize: "0.9em", lineHeight: 1.6 }}>
+              <p><strong>你即將在此資料夾執行 <code>git init</code>，建立新的 Git 倉庫。</strong></p>
+              <p>簡單說明：</p>
+              <ul>
+                <li><strong>git init</strong>：在目前資料夾建立一個全新的 Git 倉庫（會產生 <code>.git/</code> 資料夾），之後你可以用 <code>git add</code>、<code>git commit</code> 來記錄版本。</li>
+                <li>如果資料夾是空的，這會建立一個 <em>乾淨的新倉庫</em>，不會把別人的 commit 帶進來。</li>
+                <li>如果這個資料夾已經是另一個倉庫（已存在 <code>.git</code> 或已 clone 來的專案），在不確定情況下執行 <code>git init</code> 可能造成版本結構混亂或巢狀倉庫，請小心。</li>
+              </ul>
+              <p>是否確定要在 <code>{targetPath || "當前資料夾"}</code> 建立新的村莊（執行 <code>git init</code>）？</p>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end", marginTop: "12px" }}>
+                <button onClick={() => setShowInitConfirm(false)} style={{ padding: "8px 12px", cursor: "pointer" }}>取消</button>
+                <button onClick={() => doInitWorldConfirmed()} style={{ padding: "8px 12px", cursor: "pointer", background: "#4a90e2", color: "#fff", border: "none" }}>確定建立村莊</button>
+              </div>
+            </div>
           </PixelBox>
         </div>
       )}
 
       {!world.exists && (
         <PixelScene bg="dungeon">
-          {/* 背景圖片區域 - 在魔法師原來的位置（65%位置） */}
-          <div style={{
-            position: "absolute",
-            top: "60%",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "400px",
-            height: "300px",
-            backgroundImage: "url('assets/backgrounds/dungeon.png')",
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat",
-            zIndex: 1,
-            opacity: 0.8,
-            imageRendering: "pixelated"
-          }} />
-          
           {/* 對話框 - 置中 */}
           <div style={{ 
             position: "absolute", 
@@ -759,13 +1527,13 @@ function App() {
             </PixelBox>
           </div>
           
-          {/* 魔法師 - 在對話框左側（就像他在說話） */}
+          {/* 魔法師 - 在對話框左側（往左移，不卡到畫面） */}
           <PixelSprite 
             id="hero" 
             facing="right" 
             animated={true}
             style={{
-              left: "calc(50% - 350px)", // 對話框左側
+              left: "calc(50% - 420px)", // 往左移更多，避免卡到畫面
               top: "calc(45% - 32px)", // 與對話框對齊
               zIndex: 15,
               transform: "scale(1.2)" // 稍微放大，更明顯
@@ -816,6 +1584,27 @@ function App() {
             </button>
           </div>
         </PixelScene>
+      )}
+
+      {/* 移除非全螢幕的 BattleScreen 渲染，改以全螢幕覆蓋呈現 */}
+
+      {/* 戰鬥畫面 - 全屏覆蓋 */}
+      {showBattleScreen && world && world.exists && world.userName && world.lastCommitId && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1000,
+          background: "rgba(0, 0, 0, 0.8)"
+        }}>
+          <BattleScreen 
+            world={world} 
+            worldState={worldState}
+            onBattleEnd={() => setShowBattleScreen(false)}
+          />
+        </div>
       )}
 
       {world.exists && !world.userName && (
@@ -911,60 +1700,233 @@ function App() {
 
       {world.exists && world.userName && (
         <React.Fragment>
-          {/* 村莊狀態顯示 */}
+          {/* 左側：當前村莊狀態 */}
           <div style={{
             position: "absolute",
-            top: "100px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "90%",
-            maxWidth: "800px",
+            top: "120px",
+            left: "20px",
+            width: "260px",
+            maxWidth: "260px",
             zIndex: 50
           }}>
             <PixelBox type="info" title="🏰 當前村莊狀態">
-              <div style={{ marginTop: "15px", lineHeight: "1.8", fontFamily: "'Courier New', monospace" }}>
-                {world.branch === "main" || world.branch === "master" ? (
+              <div style={{ marginTop: "20px", lineHeight: "1.5", fontFamily: "'Courier New', monospace", fontSize: "0.85em" }}>
+                {world && (world.branch === "main" || world.branch === "master") ? (
                   <>
-                    <p style={{ fontSize: "1.1em", color: "#FFD700", marginBottom: "10px" }}>
-                      <strong>📍 你目前在：主線劇情（{world.branch}）</strong>
+                    <p style={{ fontSize: "0.95em", color: "#FFD700", marginBottom: "6px" }}>
+                      <strong>📍 主線劇情（{world.branch || "main"}）</strong>
                     </p>
-                    <p style={{ color: "#FFF", marginBottom: "10px" }}>
-                      ⚔️ 這裡是主戰場，你在這裡對抗主要敵人（處理主要功能開發）
+                    <p style={{ color: "#FFF", marginBottom: "6px", fontSize: "0.8em" }}>
+                      ⚔️ 主戰場（處理主要功能開發）
                     </p>
                   </>
                 ) : (
                   <>
-                    <p style={{ fontSize: "1.1em", color: "#FFD700", marginBottom: "10px" }}>
-                      <strong>📍 你目前在：支線劇情（{world.branch}）</strong>
+                    <p style={{ fontSize: "0.95em", color: "#FFD700", marginBottom: "6px" }}>
+                      <strong>📍 支線劇情（{world?.branch || "-" }）</strong>
                     </p>
-                    <p style={{ color: "#FFF", marginBottom: "10px" }}>
-                      🧙 你在進行特殊任務（開發新功能），完成後可以回到主線
+                    <p style={{ color: "#FFF", marginBottom: "6px", fontSize: "0.8em" }}>
+                      🧙 特殊任務（開發新功能）
                     </p>
                   </>
                 )}
-                <p style={{ marginTop: "10px", color: "#90EE90" }}>
+                <p style={{ marginTop: "6px", color: "#90EE90", fontSize: "0.8em", marginBottom: "8px" }}>
                   ✅ 村莊已建立，冒險者身分已確認
                 </p>
-                {world.status && world.status.includes("Changes") && (
-                  <p style={{ marginTop: "10px", color: "#FFA500" }}>
-                    ⚠️ 你有未保存的變更，準備好打怪（提交）了嗎？
+                {/* 顯示 commit ID 前7碼 */}
+                {world && world.lastCommitId && (
+                  <p style={{ marginTop: "6px", color: "#87ceeb", fontSize: "0.8em" }}>
+                    📝 ID: <code style={{ background: "rgba(0,0,0,0.3)", padding: "2px 5px" }}>{world.lastCommitId.substring(0, 7)}</code>
                   </p>
                 )}
+                {/* quick-action 按鈕群 */}
+                <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                  <button
+                    onClick={() => setShowForm(true)}
+                    style={{
+                      background: "linear-gradient(135deg, #4a90e2 0%, #2b6cb0 100%)",
+                      border: "2px solid #2b6cb0",
+                      color: "#fff",
+                      padding: "8px 10px",
+                      fontFamily: "'Courier New', monospace",
+                      cursor: "pointer",
+                      borderRadius: "4px",
+                      fontSize: "0.85em"
+                    }}
+                  >
+                    ✏️ 設定冒險者身分
+                  </button>
+                  <button
+                    onClick={handleInitWorld}
+                    style={{
+                      background: "linear-gradient(135deg, #8b5cf6 0%, #5a31c6 100%)",
+                      border: "2px solid #5a31c6",
+                      color: "#fff",
+                      padding: "8px 10px",
+                      fontFamily: "'Courier New', monospace",
+                      cursor: "pointer",
+                      borderRadius: "4px",
+                      fontSize: "0.85em"
+                    }}
+                  >
+                    🏰 建立新村莊（git init）
+                  </button>
+                  <button
+                    onClick={() => setShowVillageSim(true)}
+                    style={{
+                      background: "linear-gradient(135deg, #6bbf6b 0%, #3c8a3c 100%)",
+                      border: "2px solid #3c8a3c",
+                      color: "#fff",
+                      padding: "8px 10px",
+                      fontFamily: "'Courier New', monospace",
+                      cursor: "pointer",
+                      borderRadius: "4px",
+                      fontSize: "0.85em"
+                    }}
+                  >
+                    🏡 村莊日常
+                  </button>
+                </div>
               </div>
             </PixelBox>
           </div>
 
-          {/* 存檔畫面 */}
+          {/* 右側：動態模式按鈕和主角數據欄 */}
           <div style={{
             position: "absolute",
-            top: "250px",
+            top: "290px",               // 下移動態模式按鈕，避免與彈窗或通知重疊
+            right: "12px",
+            width: "220px",
+            maxWidth: "280px",
+            zIndex: 80
+          }}>
+            {/* 動態模式按鈕 - 有 commit 時顯示 */}
+            {world && world.exists && world.lastCommitId && worldState.inBattle && (
+              <div style={{ marginBottom: "12px" }}>
+                <button
+                  onClick={() => handleOpenBattleScreen()}
+                  style={{
+                    fontSize: "0.85em",
+                    padding: "8px 16px",
+                    width: "100%",
+                    background: "linear-gradient(135deg, #8b0000 0%, #dc143c 100%)",
+                    border: "3px solid #ff6347",
+                    color: "#fff",
+                    fontFamily: "'Courier New', monospace",
+                    cursor: "pointer",
+                    borderRadius: "0",
+                    imageRendering: "pixelated",
+                    boxShadow: "0 4px 8px rgba(0,0,0,0.5)",
+                    fontWeight: "bold",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px"
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = "scale(1.05)";
+                    e.currentTarget.style.boxShadow = "0 6px 12px rgba(255,99,71,0.7)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = "scale(1)";
+                    e.currentTarget.style.boxShadow = "0 4px 8px rgba(0,0,0,0.5)";
+                  }}
+                >
+                  <span style={{ fontSize: "1em" }}>⚔️</span>
+                  <span>動態模式</span>
+                </button>
+              </div>
+            )}
+            
+            {/* 主角數據 - 移至左側，右側保留按鈕 */}
+          </div>
+
+          {/* 中間：存檔畫面 - 往上移 */}
+          <div style={{
+            position: "absolute",
+            top: "110px",              // 上拉冒險之書框，讓下方輸入欄可見
             left: "50%",
             transform: "translateX(-50%)",
-            width: "95%",
+            width: "70%",              // 稍微縮小以給右側固定按鈕空間
             maxWidth: "900px",
             zIndex: 40
           }}>
             <SaveSlotScreen world={world} onSwitchBranch={refresh} onRefresh={refresh} />
+
+            {/* 當為「未找到 Git 倉庫」訊息時，在此處右側下方顯示（貼齊冒險之書右側） */}
+            {message && message.text && message.text.includes("未找到 Git 倉庫") && (
+              <div style={{
+                position: "absolute",
+                top: "100%",          // 在冒險之書下方
+                right: "0",
+                transform: "translateY(12px)",
+                zIndex: 50,
+                minWidth: "260px"
+              }}>
+                <PixelBox type="warning">
+                  <div style={{
+                    whiteSpace: "pre-line",
+                    fontFamily: "'Courier New', monospace",
+                    fontSize: "0.85em",
+                    lineHeight: 1.4
+                  }}>
+                    {message.text}
+                  </div>
+                </PixelBox>
+              </div>
+            )}
+            {/* 村莊日常模擬器（自動循環 + 日誌） */}
+            {showVillageSim && (
+              <div style={{
+                position: "absolute",
+                top: "100%",
+                left: "0",
+                transform: "translateY(12px)",
+                zIndex: 60,
+                width: "320px",
+                maxWidth: "40%"
+              }}>
+                <PixelBox type="dialog" title="🏘️ 村莊日常（模擬）">
+                  <div style={{ padding: "8px", fontFamily: "'Courier New', monospace" }}>
+                    <div style={{ display: "flex", gap: "10px", marginBottom: "12px", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <button onClick={() => { setSimRunning(s => !s); }} style={{ padding: "8px 12px", cursor: "pointer", background: "#6b8cff", color: "#fff", border: "2px solid #506ed1", borderRadius: "6px" }}>
+                          {simRunning ? "停止自動" : "開始自動"}
+                        </button>
+                        <button onClick={() => { setActionLog([]); }} style={{ padding: "8px 12px", cursor: "pointer", background: "#ffb86b", color: "#2b2b2b", border: "2px solid #d9964a", borderRadius: "6px" }}>
+                          清除日誌
+                        </button>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <button onClick={() => setShowVillageSim(false)} style={{ padding: "8px 12px", cursor: "pointer", background: "#c94b6e", color: "#fff", border: "2px solid #9a3950", borderRadius: "6px" }}>
+                          關閉
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ maxHeight: "220px", overflowY: "auto", background: "linear-gradient(180deg, rgba(0,0,0,0.18), rgba(0,0,0,0.25))", padding: "8px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.03)" }}>
+                      {actionLog.length === 0 ? (
+                        <div style={{ color: "#999", padding: "8px" }}>日誌空白</div>
+                      ) : (
+                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                          {actionLog.slice().reverse().map((entry, i) => {
+                            const parts = entry.split(" - ");
+                            const time = parts[0] || "";
+                            const text = parts.slice(1).join(" - ") || parts[0];
+                            return (
+                              <li key={i} style={{ display: "flex", justifyContent: "space-between", gap: "8px", padding: "8px", borderBottom: "1px dashed rgba(255,255,255,0.03)" }}>
+                                <div style={{ color: "#eee", fontSize: "0.92em" }}>{text}</div>
+                                <div style={{ color: "#87ceeb", fontSize: "0.78em", whiteSpace: "nowrap", marginLeft: "8px" }}>{time}</div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                    <div style={{ marginTop: "10px", color: "#ffd66b", fontWeight: "bold" }}>金幣：{worldState.gold ?? 0}</div>
+                  </div>
+                </PixelBox>
+              </div>
+            )}
           </div>
 
           {/* 提交歷史（退回紀錄） */}

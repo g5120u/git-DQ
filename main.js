@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, Menu } from "electron";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import fs from "fs";
-import { scanWorld, initWorld, setHero, setTargetCwd, getTargetCwd, switchBranch, getBranchInfo, getCommitHistory, checkoutCommit } from "./dq-engine.js";
+import { scanWorld, initWorld, setHero, setTargetCwd, getTargetCwd, switchBranch, getBranchInfo, getCommitHistory, checkoutCommit, openWorld, writeSoul, worldBorn, tickWorld, getWorldData } from "./dq-engine.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -221,6 +221,19 @@ ipcMain.handle("world:getTarget", async () => {
   return getTargetCwd();
 });
 
+// 檢查檔案是否存在（供 renderer 安全呼叫，避免 404 in DevTools）
+ipcMain.handle("file:exists", async (_, filePath) => {
+  try {
+    if (!filePath) return false;
+    // 若為相對路徑，轉為專案根目錄相對路徑
+    const resolved = path.isAbsolute(filePath) ? filePath : path.join(process.cwd(), filePath);
+    return fs.existsSync(resolved);
+  } catch (error) {
+    console.error("file:exists 錯誤：", error);
+    return false;
+  }
+});
+
 ipcMain.handle("world:scan", async () => {
   try {
     const result = scanWorld();
@@ -254,6 +267,27 @@ ipcMain.handle("commit:history", async (_, limit) => {
 
 ipcMain.handle("commit:checkout", async (_, commitId) => {
   return checkoutCommit(commitId);
+});
+
+// 世界永動核心系統 IPC Handlers
+ipcMain.handle("world:open", async (_, folderPath) => {
+  return openWorld(folderPath || getTargetCwd());
+});
+
+ipcMain.handle("world:writeSoul", async (_, folderPath, name, email) => {
+  return writeSoul(folderPath || getTargetCwd(), name, email);
+});
+
+ipcMain.handle("world:born", async (_, folderPath, commitHash) => {
+  return worldBorn(folderPath || getTargetCwd(), commitHash);
+});
+
+ipcMain.handle("world:tick", async (_, folderPath) => {
+  return tickWorld(folderPath || getTargetCwd());
+});
+
+ipcMain.handle("world:getData", async (_, folderPath) => {
+  return getWorldData(folderPath || getTargetCwd());
 });
 
 app.whenReady().then(() => {

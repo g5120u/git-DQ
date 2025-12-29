@@ -74,6 +74,55 @@ contextBridge.exposeInMainWorld("DQ", {
    * @param {string} commitId - Commit ID
    * @returns {Promise<Object>} 操作結果
    */
-  checkoutCommit: (commitId) => ipcRenderer.invoke("commit:checkout", commitId)
+  checkoutCommit: (commitId) => ipcRenderer.invoke("commit:checkout", commitId),
+
+  // ============================================
+  // 世界永動核心系統 World Gate System
+  // ============================================
+
+  /**
+   * 開啟世界（建立或讀取 .world 檔案）
+   * @param {string} folderPath - 資料夾路徑（可選，預設為當前目標目錄）
+   * @returns {Promise<Object>} 世界資料
+   */
+  openWorld: (folderPath) => ipcRenderer.invoke("world:open", folderPath),
+
+  /**
+   * 寫入世界靈魂（創世神名字和 email）
+   * @param {string} folderPath - 資料夾路徑（可選）
+   * @param {string} name - 創世神名字
+   * @param {string} email - 世界靈魂印記（email）
+   * @returns {Promise<Object>} 操作結果
+   */
+  writeSoul: (folderPath, name, email) => ipcRenderer.invoke("world:writeSoul", folderPath, name, email),
+
+  /**
+   * 世界誕生（第一次 commit）
+   * @param {string} folderPath - 資料夾路徑（可選）
+   * @param {string} commitHash - Commit hash
+   * @returns {Promise<Object>} 操作結果
+   */
+  worldBorn: (folderPath, commitHash) => ipcRenderer.invoke("world:born", folderPath, commitHash),
+
+  /**
+   * 世界時間流逝（檢查是否需要增加天數）
+   * @param {string} folderPath - 資料夾路徑（可選）
+   * @returns {Promise<Object>} 更新後的世界資料
+   */
+  tickWorld: (folderPath) => ipcRenderer.invoke("world:tick", folderPath),
+
+  /**
+   * 取得世界資料
+   * @param {string} folderPath - 資料夾路徑（可選）
+   * @returns {Promise<Object>} 世界資料
+   */
+  getWorldData: (folderPath) => ipcRenderer.invoke("world:getData", folderPath)
+  ,
+  /**
+   * 檢查檔案是否存在（避免在 renderer 直接載入造成 404 出現在 DevTools）
+   * @param {string} filePath
+   * @returns {Promise<boolean>}
+   */
+  fileExists: (filePath) => ipcRenderer.invoke("file:exists", filePath)
 });
 

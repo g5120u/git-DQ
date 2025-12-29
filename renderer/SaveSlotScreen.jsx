@@ -86,16 +86,23 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
   }
 
   return (
-    <div className="status-box" style={{ background: "rgba(139, 69, 19, 0.3)", border: "3px solid #8B4513" }}>
-      <h2 style={{ color: "#FFD700", textAlign: "center", marginBottom: "20px" }}>
+    <div className="status-box" style={{ background: "rgba(139, 69, 19, 0.3)", border: "3px solid #8B4513", padding: "10px" }}>
+      <h2 style={{ color: "#FFD700", textAlign: "center", marginBottom: "8px", fontSize: "0.9em" }}>
         📖 冒險之書（存檔畫面）
       </h2>
       
-      <p style={{ textAlign: "center", marginBottom: "20px", color: "#FFD700" }}>
+      <p style={{ textAlign: "center", marginBottom: "10px", color: "#FFD700", fontSize: "0.8em" }}>
         要讀取哪個冒險之書？
       </p>
 
-      <div style={{ display: "flex", gap: "15px", justifyContent: "center", flexWrap: "wrap" }}>
+      <div style={{ 
+        display: "flex", 
+        gap: "6px", 
+        justifyContent: "center", 
+        flexWrap: "nowrap", // 強制一行顯示
+        alignItems: "stretch", // 確保高度一致
+        width: "100%"
+      }}>
         {slots.map((slot, index) => (
           <div
             key={index}
@@ -103,13 +110,19 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
             style={{
               background: slot ? (slot.isCurrent ? "rgba(255, 215, 0, 0.2)" : "rgba(139, 69, 19, 0.5)") : "rgba(50, 50, 50, 0.5)",
               border: slot && slot.isCurrent ? "3px solid #FFD700" : "2px solid #8B4513",
-              borderRadius: "10px",
-              padding: "20px",
-              minWidth: "200px",
+              borderRadius: "5px",
+              padding: "8px",
+              flex: "1 1 0", // 平均分配寬度，確保大小一致
+              minWidth: "0", // 允許縮小
+              maxWidth: "none", // 移除最大寬度限制
               cursor: slot && !slot.isCurrent ? "pointer" : "default",
               transition: "all 0.3s",
               opacity: slot ? 1 : 0.5,
-              position: "relative"
+              position: "relative",
+              fontSize: "0.7em", // 縮小字體
+              display: "flex",
+              flexDirection: "column",
+              justifyContent: "flex-start"
             }}
             onMouseEnter={(e) => {
               if (slot && !slot.isCurrent) {
@@ -126,31 +139,45 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
           >
             {slot ? (
               <>
-                <div style={{ fontSize: "1.2em", fontWeight: "bold", color: "#FFD700", marginBottom: "10px" }}>
+                <div style={{ fontSize: "1em", fontWeight: "bold", color: "#FFD700", marginBottom: "6px" }}>
                   數據 {index + 1}
                 </div>
-                <div style={{ fontSize: "1.5em", marginBottom: "10px" }}>
+                <div style={{ fontSize: "1.2em", marginBottom: "6px", textAlign: "center" }}>
                   {slot.name === "main" ? "⚔️" : "🧙"}
                 </div>
-                <div style={{ color: "#FFF", marginBottom: "5px" }}>
-                  <strong>路線：</strong>{slot.name}
+                <div style={{ color: "#FFF", marginBottom: "3px", fontSize: "0.85em", lineHeight: "1.3" }}>
+                  <strong>路線：</strong><span style={{ wordBreak: "break-word" }}>{slot.name.length > 12 ? slot.name.substring(0, 12) + "..." : slot.name}</span>
                 </div>
-                <div style={{ color: "#FFF", marginBottom: "5px" }}>
+                <div style={{ color: "#FFF", marginBottom: "3px", fontSize: "0.85em" }}>
                   <strong>等級：</strong>LV {slot.commitCount}
                 </div>
-                <div style={{ color: "#FFF", fontSize: "0.9em" }}>
-                  <strong>任務：</strong>{slot.lastCommit.length > 20 ? slot.lastCommit.substring(0, 20) + "..." : slot.lastCommit}
+                <div style={{ color: "#FFF", fontSize: "0.75em", marginBottom: "3px", lineHeight: "1.3" }}>
+                  <strong>任務：</strong><span style={{ wordBreak: "break-word" }}>{slot.lastCommit.length > 12 ? slot.lastCommit.substring(0, 12) + "..." : slot.lastCommit}</span>
                 </div>
+                {/* 顯示 commit ID 前7碼 - 必須顯示才能倒退時知道是哪個 */}
+                {slot.commitShort ? (
+                  <div style={{ color: "#87ceeb", fontSize: "0.65em", marginTop: "4px", wordBreak: "break-all" }}>
+                    <strong>ID：</strong><code style={{ background: "rgba(0,0,0,0.3)", padding: "1px 3px", borderRadius: "2px", fontFamily: "'Courier New', monospace" }}>{slot.commitShort}</code>
+                  </div>
+                ) : slot.commitId ? (
+                  <div style={{ color: "#87ceeb", fontSize: "0.65em", marginTop: "4px", wordBreak: "break-all" }}>
+                    <strong>ID：</strong><code style={{ background: "rgba(0,0,0,0.3)", padding: "1px 3px", borderRadius: "2px", fontFamily: "'Courier New', monospace" }}>{slot.commitId.substring(0, 7)}</code>
+                  </div>
+                ) : slot.commitCount > 0 ? (
+                  <div style={{ color: "#888", fontSize: "0.6em", marginTop: "4px" }}>
+                    ID: 無
+                  </div>
+                ) : null}
                 {slot.isCurrent && (
                   <div style={{
                     position: "absolute",
-                    top: "10px",
-                    right: "10px",
+                    top: "6px",
+                    right: "6px",
                     background: "#FFD700",
                     color: "#000",
-                    padding: "3px 8px",
-                    borderRadius: "5px",
-                    fontSize: "0.8em",
+                    padding: "2px 6px",
+                    borderRadius: "3px",
+                    fontSize: "0.7em",
                     fontWeight: "bold"
                   }}>
                     當前
@@ -158,9 +185,9 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
                 )}
               </>
             ) : (
-              <div style={{ textAlign: "center", color: "#888", padding: "20px" }}>
-                <div style={{ fontSize: "2em", marginBottom: "10px" }}>📭</div>
-                <div>空位</div>
+              <div style={{ textAlign: "center", color: "#888", padding: "15px" }}>
+                <div style={{ fontSize: "1.5em", marginBottom: "6px" }}>📭</div>
+                <div style={{ fontSize: "0.8em" }}>空位</div>
               </div>
             )}
           </div>
@@ -169,8 +196,27 @@ function SaveSlotScreen({ world, onSwitchBranch, onRefresh }) {
 
       <div style={{ marginTop: "20px", textAlign: "center" }}>
         {!showNewBranchForm ? (
-          <button onClick={() => setShowNewBranchForm(true)}>
-            ➕ 建立新冒險路線（新分支）
+          <button 
+            onClick={() => setShowNewBranchForm(true)}
+            style={{
+              fontFamily: "'Courier New', monospace",
+              padding: "12px 24px",
+              borderRadius: "0",
+              cursor: "pointer",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+              border: "3px solid #4a148c",
+              color: "#fff",
+              fontWeight: "bold",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px"
+            }}
+          >
+            <span>➕</span>
+            <span>建立新冒險路線（新分支）</span>
+            <span style={{ fontSize: "0.85em", opacity: 0.8, marginLeft: "8px" }}>
+              (git checkout -b)
+            </span>
           </button>
         ) : (
           <div style={{ background: "rgba(0, 0, 0, 0.3)", padding: "15px", borderRadius: "5px" }}>
